@@ -73,7 +73,7 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         #os.system('python /home/huhaomeng/gym-gazebo/gym_gazebo/envs/px4_uav/mavros_ctrl_server.py &')
 
         print('@env@ ctrl server started')
-        time.sleep(10)
+        time.sleep(15)
 
         self.pos = np.array([0, 0, 0])
         #initialize ros nodes
@@ -88,7 +88,7 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         offboard_setpoint_counter = 0
         while(rclpy.ok()):
             timestamp =timestamp_subscriber.current_time
-            if offboard_setpoint_counter > 10:
+            if offboard_setpoint_counter == 20:
                 vehicle_command_publisher.publish(timestamp,176,param1 = 1, param2 =6)
                 #arm
                 vehicle_command_publisher.publish(timestamp,400,param1 = 1.0)
@@ -96,8 +96,9 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
             timestamp =timestamp_subscriber.current_time
             offboard_control_publisher.publish(timestamp)
             timestamp =timestamp_subscriber.current_time
-            position_publisher.publish(timestamp, 0.0, 0.0, 5.0, 0.0)
-            offboard_setpoint_counter += 1
+            position_publisher.publish(timestamp, 0.0, 0.0, -5.0, 0.0)
+            if offboard_setpoint_counter < 21:
+                offboard_setpoint_counter += 1
             rate.sleep()
 
 

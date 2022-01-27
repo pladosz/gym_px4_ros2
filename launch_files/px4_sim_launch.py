@@ -12,7 +12,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
     """Launch Gazebo with a drone running PX4 communicating over ROS 2."""
     HOME = "/home/user/landing"
-    PX4_RUN_DIR = HOME + 'PX4-Autopilot'
+    PX4_RUN_DIR = HOME + '/home/user/landing/PX4-Autopilot/build/px4_sitl_rtps/tmp'
     gazebo_launch_dir = os.path.join(get_package_share_directory('gazebo_ros'), 'launch')
 
     #fpv_racing_gazebo_dir = get_package_share_directory('fpv_racing_gazebo')
@@ -66,9 +66,11 @@ def generate_launch_description():
         ExecuteProcess(
             cmd=[
                 HOME + '/PX4-Autopilot/build/px4_sitl_rtps/bin/px4',
-                HOME + '/PX4-Autopilot/ROMFS/px4fmu_common/',
+                HOME + '/PX4-Autopilot/build/px4_sitl_rtps/etc',
                 '-s',
-                HOME + '/PX4-Autopilot/ROMFS/px4fmu_common/init.d-posix/rcS'
+                HOME + '/PX4-Autopilot/build/px4_sitl_rtps/etc/init.d-posix/rcS',
+                '-t',
+                HOME + '/PX4-Autopilot/test_data'
             ],
             cwd=PX4_RUN_DIR,
             output='screen'),
