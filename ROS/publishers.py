@@ -1,3 +1,4 @@
+from cmath import nan
 import rclpy
 from rclpy.node import Node
 
@@ -13,32 +14,40 @@ from px4_msgs.msg import VehicleCommand
 
 class OffboardControlPublisher(Node):
 
-    def __init__(self):
+    def __init__(self, timestamp_subscriber):
         super().__init__('offboard_control_publisher')
         self.publisher_ = self.create_publisher(OffboardControlMode, '/fmu/offboard_control_mode/in', 10)
-        timer_period = 1  # seconds
+        timer_period = 0.1  # seconds
         self.timer = self.create_timer(timer_period, self.offboard_callback)
         self.i = 0
+        self.msg = OffboardControlMode()
+        self.timestamp_subscriber =timestamp_subscriber
+        self.position = False
+        self.velocity = False 
+        self.accelration = False 
+        self.attitude = False
+        self.body_rate = False
 
     def offboard_callback(self):
         msg = OffboardControlMode()
-        msg.position = True
-        msg.velocity = False
-        msg.acceleration = False
-        msg.attitude = False
-        msg.body_rate = False
-        self.publisher_.publish(msg)
+        msg.timestamp = self.timestamp_subscriber.current_time
+        msg.position = self.position
+        msg.velocity = self.velocity
+        msg.acceleration = self.accelration 
+        msg.attitude = self.attitude
+        msg.body_rate = self.body_rate
+        self.publisher_.publish(self.msg)
         self.get_logger().info('Publishing offboard message')
 
-    def publish(self,timestamp):
+    def publish(self,timestamp, position = False, velocity = False, accelration = False, attitude = False, body_rate = False):
         msg = OffboardControlMode()
         msg.timestamp = timestamp
-        msg.position = True
-        msg.velocity = False
-        msg.acceleration = False
-        msg.attitude = False
-        msg.body_rate = False
-        self.publisher_.publish(msg)
+        msg.position = position
+        msg.velocity = velocity
+        msg.acceleration = accelration
+        msg.attitude = attitude
+        msg.body_rate = body_rate
+        self.publisher_.publish(self.msg)
 
 class PositionPublisher(Node):
     def __init__(self):
@@ -65,6 +74,51 @@ class PositionPublisher(Node):
         msg.y = y
         msg.z = z
         msg.yaw = yaw
+        self.publisher_.publish(msg)
+
+class VelocityPublisher(Node):
+    #eventually time subscriber node will have to pass here by reference
+    def __init__(self,timestamp_subscriber):
+        super().__init__('velocity_publisher')
+        self.publisher_ = self.create_publisher(TrajectorySetpoint, '/fmu/trajectory_setpoint/in', 10)
+        timer_period = 0.1  # seconds
+        self.timer = self.create_timer(timer_period, self.vel_callback)
+        self.i = 0
+        self.x = nan
+        self.y = nan
+        self.z = nan
+        self.yaw =nan
+        self.vx = 0.0
+        self.vy = 0.0
+        self.vz =0.0
+        self.yawspeed = 0.0
+        self.timestamp = 0
+        self.timestamp_subscriber =timestamp_subscriber
+
+    def vel_callback(self):
+        msg = TrajectorySetpoint()
+        msg.timestamp = c
+        msg.x = self.x
+        msg.y = self.y
+        msg.z = self.z
+        msg.yaw =self.yaw
+        msg.vx = self.vx
+        msg.vy = self.vy
+        msg.vz = self.vz
+        msg.yawspeed = self.yawspeed
+        self.publisher_.publish(msg)
+    
+    def publish(self,timestamp, vx = 0.0, vy = 0.0, vz = 0.0, yawspeed = 0.0):
+        msg = TrajectorySetpoint()
+        msg.timestamp = timestamp
+        msg.x = nan
+        msg.y = nan
+        msg.z = nan
+        msg.yaw =nan
+        msg.vx = vx 
+        msg.vy = vy
+        msg.vz = vz
+        msg.yawspeed = yawspeed
         self.publisher_.publish(msg)
 
 class VehicleCommandPublisher(Node):

@@ -45,8 +45,8 @@ from gym.utils import seeding
 from ROS.publishers import OffboardControlPublisher
 from ROS.publishers import PositionPublisher
 from ROS.publishers import VehicleCommandPublisher
+from ROS.publishers import VelocityPublisher
 from ROS.subscribers import TimesyncSubscriber
-
 #different commands guide:
 #176 - set mode 
 # 400 - Arms / Disarms a component |1 to arm, 0 to disarm
@@ -78,31 +78,48 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         self.pos = np.array([0, 0, 0])
         #initialize ros nodes
         rclpy.init(args=args)
-        vehicle_command_publisher =  VehicleCommandPublisher()
-        offboard_control_publisher = OffboardControlPublisher()
-        position_publisher = PositionPublisher()
         timestamp_subscriber = TimesyncSubscriber()
+        vehicle_command_publisher =  VehicleCommandPublisher()
+
+        self.velocity_subscriber = []
         rate = timestamp_subscriber.create_rate(30)
         spin_thread = Thread(target = rclpy.spin, args =(timestamp_subscriber,))
         spin_thread.start()
         offboard_setpoint_counter = 0
+        offboard_control_publisher = OffboardControlPublisher(0)
+        position_publisher = PositionPublisher()
+        velocity_publisher = VelocityPublisher(0)
         while(rclpy.ok()):
-            timestamp =timestamp_subscriber.current_time
+            timestamp = timestamp_subscriber.current_time
             if offboard_setpoint_counter == 20:
                 vehicle_command_publisher.publish(timestamp,176,param1 = 1, param2 =6)
                 #arm
                 vehicle_command_publisher.publish(timestamp,400,param1 = 1.0)
             #offboard publisher tells px4 which mode to enter I think. You need to do publish_vehicle_command after 10 setpoints
             timestamp =timestamp_subscriber.current_time
-            offboard_control_publisher.publish(timestamp)
-            timestamp =timestamp_subscriber.current_time
-            position_publisher.publish(timestamp, 0.0, 0.0, -5.0, 0.0)
-            if offboard_setpoint_counter < 21:
-                offboard_setpoint_counter += 1
+            if offboard_setpoint_counter < 400:
+                offboard_control_publisher.publish(timestamp, position = True)
+                timestamp =timestamp_subscriber.current_time
+                position_publisher.publish(timestamp, 0.0, 0.0, -5.0, 0.0)
+            #else:
+            #    offboard_control_publisher.publish(timestamp, velocity = True)
+            #    timestamp =timestamp_subscriber.current_time
+            #    velocity_publisher.publish(timestamp, vx = 1.0)
+            if offboard_setpoint_counter == 400:
+                spin_thread_vel = Thread(target = rclpy.spin, args =(velocity_publisher,))
+                spin_thread_vel.start()
+                offboard_control_publisher.velocity = True
+                spin_thread_control_mode = Thread(target = rclpy.spin, args =(offboard_control_publisher,))
+                spin_thread_control_mode.start()
+                print('velocity publishing should start')
+            offboard_setpoint_counter += 1
+            #start velocity publishing thread after desired position is reached
+
             rate.sleep()
 
 
     def step(self, action):
+        #change the mode for velocity control
         margin = 1
         #i am not sure how to do this yet
         #rospy.wait_for_service('/gazebo/unpause_physics')
