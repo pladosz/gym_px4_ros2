@@ -96,7 +96,6 @@ class VelocityPublisher(Node):
         self.vy = 0.0
         self.vz =0.0
         self.yawspeed = 0.0
-        self.timestamp = 0
         # offboard command mode
         self.position = False
         self.velocity = True
@@ -113,8 +112,7 @@ class VelocityPublisher(Node):
     
     def timer_callback(self):
         if self.mode == 'None':
-            print('publisher type is necessary')
-            exit()
+            pass
         elif self.mode == 'velocity':
             self.trajectory_callback()
             self.position = False
@@ -147,26 +145,25 @@ class VelocityPublisher(Node):
         msg.acceleration = self.accelration 
         msg.attitude = self.attitude
         msg.body_rate = self.body_rate
-        self.publisher_com_.publish(self.msg)
-        self.get_logger().info('Publishing offboard message')
+        self.publisher_com_.publish(msg)
     
 
     def timestamp_listener_callback(self, msg):
         self.current_time = msg.timestamp
         #self.get_logger().info('I heard: "%s"' % msg.timestamp)
     
-    def publish(self,timestamp, vx = 0.0, vy = 0.0, vz = 0.0, yawspeed = 0.0):
-        msg = TrajectorySetpoint()
-        msg.timestamp = timestamp
-        msg.x = nan
-        msg.y = nan
-        msg.z = nan
-        msg.yaw =nan
-        msg.vx = vx 
-        msg.vy = vy
-        msg.vz = vz
-        msg.yawspeed = yawspeed
-        self.publisher_.publish(msg)
+#    def publish(self,timestamp, vx = 0.0, vy = 0.0, vz = 0.0, yawspeed = 0.0):
+#        msg = TrajectorySetpoint()
+#        msg.timestamp = timestamp
+#        msg.x = nan
+#        msg.y = nan
+#        msg.z = nan
+#        msg.yaw =nan
+#        msg.vx = vx 
+#        msg.vy = vy
+#        msg.vz = vz
+#        msg.yawspeed = yawspeed
+#        self.publisher_.publish(msg)
 
 class VehicleCommandPublisher(Node):
     def __init__(self):

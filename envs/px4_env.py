@@ -9,7 +9,7 @@ import subprocess
 import os
 import pickle
 import types
-
+from cmath import nan
 from threading import Thread
 
 from gym import utils, spaces
@@ -78,37 +78,48 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         self.pos = np.array([0, 0, 0])
         #initialize ros nodes
         rclpy.init(args=args)
-        timestamp_subscriber = TimesyncSubscriber()
+        #timestamp_subscriber = TimesyncSubscriber()
         vehicle_command_publisher =  VehicleCommandPublisher()
-
+        velocity_publisher = VelocityPublisher()
         self.velocity_subscriber = []
-        rate = timestamp_subscriber.create_rate(30)
-        spin_thread = Thread(target = rclpy.spin, args =(timestamp_subscriber,))
+        rate = velocity_publisher.create_rate(30)
+        spin_thread = Thread(target = rclpy.spin, args =(velocity_publisher,))
         spin_thread.start()
         offboard_setpoint_counter = 0
         offboard_control_publisher = OffboardControlPublisher()
-        position_publisher = PositionPublisher()
-        velocity_publisher = VelocityPublisher()
+        print('Nodes initialized')
+        #position_publisher = PositionPublisher()
         while(rclpy.ok()):
-            timestamp = timestamp_subscriber.current_time
+            timestamp = velocity_publisher.current_time
             if offboard_setpoint_counter == 20:
                 vehicle_command_publisher.publish(timestamp,176,param1 = 1, param2 =6)
                 #arm
                 vehicle_command_publisher.publish(timestamp,400,param1 = 1.0)
             #offboard publisher tells px4 which mode to enter I think. You need to do publish_vehicle_command after 10 setpoints
-            timestamp =timestamp_subscriber.current_time
             if offboard_setpoint_counter < 400:
-                offboard_control_publisher.publish(timestamp, position = True)
-                timestamp =timestamp_subscriber.current_time
-                position_publisher.publish(timestamp, 0.0, 0.0, -5.0, 0.0)
+                velocity_publisher.x = 0.0
+                velocity_publisher.y = 0.0
+                velocity_publisher.z = -5.0
+                velocity_publisher.yaw =0.0
+                velocity_publisher.vx = nan
+                velocity_publisher.vy = nan
+                velocity_publisher.vz =nan
+                velocity_publisher.yawspeed = nan
+                velocity_publisher.mode = 'position'
             #else:
             #    offboard_control_publisher.publish(timestamp, velocity = True)
             #    timestamp =timestamp_subscriber.current_time
             #    velocity_publisher.publish(timestamp, vx = 1.0)
             if offboard_setpoint_counter == 400:
-                spin_thread_vel = Thread(target = rclpy.spin, args =(velocity_publisher,))
-                spin_thread_vel.start()
-                print('velocity publishing should start')
+                velocity_publisher.x = nan
+                velocity_publisher.y = nan
+                velocity_publisher.z = nan
+                velocity_publisher.yaw =nan
+                velocity_publisher.vx = 1.0
+                velocity_publisher.vy = 0.0
+                velocity_publisher.vz =0.0
+                velocity_publisher.yawspeed = 0.0
+                velocity_publisher.mode = 'velocity'
             offboard_setpoint_counter += 1
             #start velocity publishing thread after desired position is reached
 
