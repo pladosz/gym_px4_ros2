@@ -10,18 +10,17 @@ from sensor_msgs.msg import LaserScan
 from px4_msgs.msg import TrajectorySetpoint
 from px4_msgs.msg import OffboardControlMode
 from px4_msgs.msg import VehicleCommand
-
+from px4_msgs.msg import Timesync
 
 class OffboardControlPublisher(Node):
 
-    def __init__(self, timestamp_subscriber):
+    def __init__(self):
         super().__init__('offboard_control_publisher')
         self.publisher_ = self.create_publisher(OffboardControlMode, '/fmu/offboard_control_mode/in', 10)
         timer_period = 0.1  # seconds
         self.timer = self.create_timer(timer_period, self.offboard_callback)
         self.i = 0
         self.msg = OffboardControlMode()
-        self.timestamp_subscriber =timestamp_subscriber
         self.position = False
         self.velocity = False 
         self.accelration = False 
@@ -29,8 +28,8 @@ class OffboardControlPublisher(Node):
         self.body_rate = False
 
     def offboard_callback(self):
+        #currently does not work
         msg = OffboardControlMode()
-        msg.timestamp = self.timestamp_subscriber.current_time
         msg.position = self.position
         msg.velocity = self.velocity
         msg.acceleration = self.accelration 
@@ -47,7 +46,7 @@ class OffboardControlPublisher(Node):
         msg.acceleration = accelration
         msg.attitude = attitude
         msg.body_rate = body_rate
-        self.publisher_.publish(self.msg)
+        self.publisher_.publish(msg)
 
 class PositionPublisher(Node):
     def __init__(self):
@@ -78,11 +77,16 @@ class PositionPublisher(Node):
 
 class VelocityPublisher(Node):
     #eventually time subscriber node will have to pass here by reference
-    def __init__(self,timestamp_subscriber):
+    def __init__(self):
         super().__init__('velocity_publisher')
-        self.publisher_ = self.create_publisher(TrajectorySetpoint, '/fmu/trajectory_setpoint/in', 10)
+        self.publisher_vel_ = self.create_publisher(TrajectorySetpoint, '/fmu/trajectory_setpoint/in', 10)
+        self.publisher_com_ = self.create_publisher(OffboardControlMode, '/fmu/offboard_control_mode/in', 10)
         timer_period = 0.1  # seconds
-        self.timer = self.create_timer(timer_period, self.vel_callback)
+        #just one timer to call both publishers
+        self.timer = self.create_timer(timer_period, self.timer_callback)
+        # decide what to publish either 'position' or 'velocity'
+        self.mode = 'None'
+        #velocity commads
         self.i = 0
         self.x = nan
         self.y = nan
@@ -93,11 +97,38 @@ class VelocityPublisher(Node):
         self.vz =0.0
         self.yawspeed = 0.0
         self.timestamp = 0
-        self.timestamp_subscriber =timestamp_subscriber
+        # offboard command mode
+        self.position = False
+        self.velocity = True
+        self.accelration = False 
+        self.attitude = False
+        self.body_rate = False
+        # create timestamp subscriber
+        self.subscription = self.create_subscription(
+            Timesync,
+            '/fmu/timesync/out',
+            self.timestamp_listener_callback,
+            10)
+        self.current_time = 0
+    
+    def timer_callback(self):
+        if self.mode == 'None':
+            print('publisher type is necessary')
+            exit()
+        elif self.mode == 'velocity':
+            self.trajectory_callback()
+            self.position = False
+            self.velocity = True
+            self.veh_com_callback()
+        elif self.mode == 'position':
+            self.trajectory_callback()
+            self.position = True
+            self.velocity = False
+            self.veh_com_callback()
 
-    def vel_callback(self):
+    def trajectory_callback(self):
         msg = TrajectorySetpoint()
-        msg.timestamp = c
+        msg.timestamp = self.current_time
         msg.x = self.x
         msg.y = self.y
         msg.z = self.z
@@ -106,7 +137,23 @@ class VelocityPublisher(Node):
         msg.vy = self.vy
         msg.vz = self.vz
         msg.yawspeed = self.yawspeed
-        self.publisher_.publish(msg)
+        self.publisher_vel_.publish(msg)
+
+    def veh_com_callback(self):
+        msg = OffboardControlMode()
+        msg.timestamp = self.current_time
+        msg.position = self.position
+        msg.velocity = self.velocity
+        msg.acceleration = self.accelration 
+        msg.attitude = self.attitude
+        msg.body_rate = self.body_rate
+        self.publisher_com_.publish(self.msg)
+        self.get_logger().info('Publishing offboard message')
+    
+
+    def timestamp_listener_callback(self, msg):
+        self.current_time = msg.timestamp
+        #self.get_logger().info('I heard: "%s"' % msg.timestamp)
     
     def publish(self,timestamp, vx = 0.0, vy = 0.0, vz = 0.0, yawspeed = 0.0):
         msg = TrajectorySetpoint()

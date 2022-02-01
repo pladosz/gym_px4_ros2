@@ -86,9 +86,9 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         spin_thread = Thread(target = rclpy.spin, args =(timestamp_subscriber,))
         spin_thread.start()
         offboard_setpoint_counter = 0
-        offboard_control_publisher = OffboardControlPublisher(0)
+        offboard_control_publisher = OffboardControlPublisher()
         position_publisher = PositionPublisher()
-        velocity_publisher = VelocityPublisher(0)
+        velocity_publisher = VelocityPublisher()
         while(rclpy.ok()):
             timestamp = timestamp_subscriber.current_time
             if offboard_setpoint_counter == 20:
@@ -108,9 +108,6 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
             if offboard_setpoint_counter == 400:
                 spin_thread_vel = Thread(target = rclpy.spin, args =(velocity_publisher,))
                 spin_thread_vel.start()
-                offboard_control_publisher.velocity = True
-                spin_thread_control_mode = Thread(target = rclpy.spin, args =(offboard_control_publisher,))
-                spin_thread_control_mode.start()
                 print('velocity publishing should start')
             offboard_setpoint_counter += 1
             #start velocity publishing thread after desired position is reached
