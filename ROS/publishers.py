@@ -11,6 +11,7 @@ from px4_msgs.msg import TrajectorySetpoint
 from px4_msgs.msg import OffboardControlMode
 from px4_msgs.msg import VehicleCommand
 from px4_msgs.msg import Timesync
+from px4_msgs.msg import VehicleOdometry
 
 class OffboardControlPublisher(Node):
 
@@ -75,7 +76,7 @@ class PositionPublisher(Node):
         msg.yaw = yaw
         self.publisher_.publish(msg)
 
-class VelocityPublisher(Node):
+class TrajectoryPublisher(Node):
     #eventually time subscriber node will have to pass here by reference
     def __init__(self):
         super().__init__('velocity_publisher')
@@ -108,7 +109,14 @@ class VelocityPublisher(Node):
             '/fmu/timesync/out',
             self.timestamp_listener_callback,
             10)
+        self.drone_state_subscription = self.create_subscription(
+            VehicleOdometry,
+            '/fmu/vehicle_odometry/out',
+            self.UAV_state_listener_callback,
+            10)
         self.current_time = 0
+        #initialize states
+        self.uav_position = []
     
     def timer_callback(self):
         if self.mode == 'None':
@@ -146,7 +154,19 @@ class VelocityPublisher(Node):
         msg.attitude = self.attitude
         msg.body_rate = self.body_rate
         self.publisher_com_.publish(msg)
+
+    def get_current_state(self):
+        #eventual more states will be added
+        state = self.uav_position
+        return state
     
+    def UAV_state_listener_callback(self,msg):
+        #positions
+        x = msg.x
+        y = msg.y
+        z = msg.z
+        q = msg.q
+        self.uav_position = [x,y,z,q]
 
     def timestamp_listener_callback(self, msg):
         self.current_time = msg.timestamp
