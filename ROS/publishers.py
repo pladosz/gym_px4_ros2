@@ -76,10 +76,10 @@ class PositionPublisher(Node):
         msg.yaw = yaw
         self.publisher_.publish(msg)
 
-class TrajectoryPublisher(Node):
+class GymNode(Node):
     #eventually time subscriber node will have to pass here by reference
     def __init__(self):
-        super().__init__('velocity_publisher')
+        super().__init__('gym_node')
         self.publisher_vel_ = self.create_publisher(TrajectorySetpoint, '/fmu/trajectory_setpoint/in', 10)
         self.publisher_com_ = self.create_publisher(OffboardControlMode, '/fmu/offboard_control_mode/in', 10)
         timer_period = 0.1  # seconds

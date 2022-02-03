@@ -45,7 +45,7 @@ from gym.utils import seeding
 from ROS.publishers import OffboardControlPublisher
 from ROS.publishers import PositionPublisher
 from ROS.publishers import VehicleCommandPublisher
-from ROS.publishers import TrajectoryPublisher
+from ROS.publishers import GymNode
 from ROS.subscribers import TimesyncSubscriber
 #different commands guide:
 #176 - set mode 
@@ -80,46 +80,47 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         rclpy.init(args=args)
         #timestamp_subscriber = TimesyncSubscriber()
         vehicle_command_publisher =  VehicleCommandPublisher()
-        self.trajectory_publisher = TrajectoryPublisher()
+        self.gym_node = GymNode()
 
-        rate = self.trajectory_publisher.create_rate(30)
-        spin_thread = Thread(target = rclpy.spin, args =(self.trajectory_publisher,))
+        rate = self.gym_node.create_rate(30)
+        spin_thread = Thread(target = rclpy.spin, args =(self.gym_node,))
         spin_thread.start()
         offboard_setpoint_counter = 0
         offboard_control_publisher = OffboardControlPublisher()
         print('Nodes initialized')
         #position_publisher = PositionPublisher()
         while(rclpy.ok()):
-            timestamp = self.trajectory_publisher.current_time
+            timestamp = self.gym_node.current_time
             if offboard_setpoint_counter == 20:
                 vehicle_command_publisher.publish(timestamp,176,param1 = 1, param2 =6)
                 #arm
                 vehicle_command_publisher.publish(timestamp,400,param1 = 1.0)
             #offboard publisher tells px4 which mode to enter I think. You need to do publish_vehicle_command after 10 setpoints
             if offboard_setpoint_counter < 400:
-                self.trajectory_publisher.x = 0.0
-                self.trajectory_publisher.y = 0.0
-                self.trajectory_publisher.z = -5.0
-                self.trajectory_publisher.yaw =0.0
-                self.trajectory_publisher.vx = nan
-                self.trajectory_publisher.vy = nan
-                self.trajectory_publisher.vz =nan
-                self.trajectory_publisher.yawspeed = nan
-                self.trajectory_publisher.mode = 'position'
+                self.gym_node.x = 0.0
+                self.gym_node.y = 0.0
+                self.gym_node.z = -5.0
+                self.gym_node.yaw =0.0
+                self.gym_node.vx = nan
+                self.gym_node.vy = nan
+                self.gym_node.vz =nan
+                self.gym_node.yawspeed = nan
+                self.gym_node.mode = 'position'
             #else:
             #    offboard_control_publisher.publish(timestamp, trajectory = True)
             #    timestamp =timestamp_subscriber.current_time
-            #    self.trajectory_publisher.publish(timestamp, vx = 1.0)
+            #    self.gym_node.publish(timestamp, vx = 1.0)
             if offboard_setpoint_counter == 400:
-                self.trajectory_publisher.x = nan
-                self.trajectory_publisher.y = nan
-                self.trajectory_publisher.z = nan
-                self.trajectory_publisher.yaw =nan
-                self.trajectory_publisher.vx = 1.0
-                self.trajectory_publisher.vy = 0.0
-                self.trajectory_publisher.vz =0.0
-                self.trajectory_publisher.yawspeed = 0.0
-                self.trajectory_publisher.mode = 'velocity'
+                self.gym_node.x = nan
+                self.gym_node.y = nan
+                self.gym_node.z = nan
+                self.gym_node.yaw =nan
+                self.gym_node.vx = 1.0
+                self.gym_node.vy = 0.0
+                self.gym_node.vz =0.0
+                self.gym_node.yawspeed = 0.0
+                self.gym_node.mode = 'velocity'
+                break
             offboard_setpoint_counter += 1
             #start trajectory publishing thread after desired position is reached
 
@@ -127,106 +128,19 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
 
 
     def step(self, action):
-        #change the mode for trajectory control
-        margin = 1
-        #i am not sure how to do this yet
-        #rospy.wait_for_service('/gazebo/unpause_physics')
-        #try:
-        #    self.unpause()
-        #except (rospy.ServiceException) as e:
-        #    print ("/gazebo/unpause_physics service call failed")
-
-        old_position = [self.pos[0],
-                        self.pos[1],
-                        self.pos[2]]
-
-        done_reason = ''
-
-        cmd = ''
-        if type(action) == np.numarray:
-            cmd = 'move#{0}#{1}#{2}'.format(action[0], action[1], action[2])
-        elif action == 0:  # xPlus
-            cmd = 'moveXPlus' + '#' + str(margin)
-        elif action == 1:  # xMin
-            cmd = 'moveXMin' + '#' + str(margin)
-        elif action == 2:  # yPlus
-            cmd = 'moveYPlus' + '#' + str(margin)
-        elif action == 3:  # yMin
-            cmd = 'moveYMin' + '#' + str(margin)
-        elif action == 4:  # up
-            cmd = 'moveUp' + '#' + str(margin)
-        elif action == 5:  # down
-            cmd = 'moveDown' + '#' + str(margin)
-        elif action == 6:  # stay
-            cmd = 'stay' + '#' + str(margin)
-
-        data = self.send_msg_get_return(cmd)
-        self.pos = [data[0], data[1], data[2]]
-        lidar_ranges = data[3:]
-        for idx in range(0, len(lidar_ranges)):
-            if lidar_ranges[idx] > 10 or lidar_ranges[idx] == np.inf:
-                lidar_ranges[idx] = 10
-
-        # print('@env@ data' + str(data))
-
+        state = self.gym_node.get_current_state()
         reward = 0
         done = False  # done check
-
-        # finish reward
-        if self.is_at_position(self.des[0], self.des[1], self.des[2],
-                               self.pos[0], self.pos[1], self.pos[2],
-                               self.radius):
-            done = True
-            done_reason = 'finish'
-            reward = reward + 10
-        # move reward
-        reward = reward + 2 * self.cal_distence(old_position, self.pos, self.des)
-
-        # danger reward
-        for i in lidar_ranges:
-            if i < 1.5:
-                reward = -5
-                done = True
-                if done and done_reason == '':
-                    done_reason = 'laser_danger'
-            elif i <= 6:
-                reward = reward - 1 / (i - 1)
-
-        # fail reward
-        if (self.pos[0] < -50 or
-                self.pos[0] > 50 or
-                np.abs(self.pos[1]) > 50 or
-                self.pos[2] > 40 or
-                self.pos[2] < 1):
-            reward = reward - 5
-            done = True
-            if done and done_reason == '':
-                done_reason = 'out of map'
-
-        # trans relative position
-        data[0] = data[0] - self.des[0]
-        data[1] = data[1] - self.des[1]
-        data[2] = data[2] - self.des[2]
-
-        for idx in range(len(data)):
-            if idx < 3:
-                data[idx] = (data[idx] + 50) / 100
-            else:
-                if data[idx] > 10 or data[idx] == np.inf:
-                    data[idx] = 10
-                data[idx] = (data[idx] - 0.2) / 9.8
-
-        state = data
-
-        if 'nan' in str(data):
-            state = np.zeros([len(data)])
-            done = True
-            reward = 0
+        #start sending new commands
+        #TODO it may happen that action zero gets passed first and then send with old action, maybe flag necessary after update to stop that from happening
+        self.gym_node.vx = action[0]
+        self.gym_node.vy = action[1]
+        self.gym_node.vz =action[2]
 
         # print('@env@ observation:' + str(state))
         # print('@env@ reward:' + str(reward))
         # print('@env@ done:' + str(done))
-        return state, reward, done, {'done_reason': done_reason}
+        return state, reward, done, {'debug': 'working just fine'}
 
     def reset(self):
         # Resets the state of the environment and returns an initial observation.
