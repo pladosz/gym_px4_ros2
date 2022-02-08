@@ -47,6 +47,7 @@ from ROS.publishers import PositionPublisher
 from ROS.publishers import VehicleCommandPublisher
 from ROS.publishers import GymNode
 from ROS.subscribers import TimesyncSubscriber
+from ROS.services import ResetWorldServ
 #different commands guide:
 #176 - set mode 
 # 400 - Arms / Disarms a component |1 to arm, 0 to disarm
@@ -78,6 +79,9 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         self.pos = np.array([0, 0, 0])
         #initialize ros nodes
         rclpy.init(args=args)
+        #initialize services
+
+        self.reset_world = ResetWorldServ()
         #timestamp_subscriber = TimesyncSubscriber()
         vehicle_command_publisher =  VehicleCommandPublisher()
         self.gym_node = GymNode()
@@ -88,7 +92,14 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         offboard_setpoint_counter = 0
         offboard_control_publisher = OffboardControlPublisher()
         print('Nodes initialized')
-        #position_publisher = PositionPublisher()
+        self.reach_initial_pose()
+        print('pose reached')
+
+
+    def reach_initial_pose(self):
+        offboard_setpoint_counter = 0
+        rate = self.gym_node.create_rate(30)
+        vehicle_command_publisher =  VehicleCommandPublisher()
         while(rclpy.ok()):
             timestamp = self.gym_node.current_time
             if offboard_setpoint_counter == 20:
@@ -96,42 +107,73 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
                 #arm
                 vehicle_command_publisher.publish(timestamp,400,param1 = 1.0)
             #offboard publisher tells px4 which mode to enter I think. You need to do publish_vehicle_command after 10 setpoints
+            initial_pose = [0.0,0.0,-5.0, 0.0]
             if offboard_setpoint_counter < 400:
-                self.gym_node.x = 0.0
-                self.gym_node.y = 0.0
-                self.gym_node.z = -5.0
-                self.gym_node.yaw =0.0
-                self.gym_node.vx = nan
-                self.gym_node.vy = nan
-                self.gym_node.vz =nan
-                self.gym_node.yawspeed = nan
-                self.gym_node.mode = 'position'
+                self.fly_to_pose(*initial_pose)
+            #see if agents reached its position
+            uav_pos = self.gym_node.uav_position
+            
             #else:
             #    offboard_control_publisher.publish(timestamp, trajectory = True)
             #    timestamp =timestamp_subscriber.current_time
             #    self.gym_node.publish(timestamp, vx = 1.0)
-            if offboard_setpoint_counter == 400:
+            if self.is_at_position(initial_pose[0], initial_pose[1],initial_pose[2],uav_pos[0],uav_pos[1],uav_pos[2],0.5):
                 self.gym_node.x = nan
                 self.gym_node.y = nan
                 self.gym_node.z = nan
                 self.gym_node.yaw =nan
-                self.gym_node.vx = 1.0
+                self.gym_node.vx = 0.0
                 self.gym_node.vy = 0.0
                 self.gym_node.vz =0.0
                 self.gym_node.yawspeed = 0.0
                 self.gym_node.mode = 'velocity'
                 break
             offboard_setpoint_counter += 1
-            #start trajectory publishing thread after desired position is reached
-
             rate.sleep()
+    
+    def fly_to_pose(self,x,y,z,yaw):
+            self.gym_node.x = x
+            self.gym_node.y = y
+            self.gym_node.z = z
+            self.gym_node.yaw = yaw
+            self.gym_node.vx = nan
+            self.gym_node.vy = nan
+            self.gym_node.vz =nan
+            self.gym_node.yawspeed = nan
+            self.gym_node.mode = 'position'
+    
+    def landing(self):
+        landing_counter = 0
+        rate = self.gym_node.create_rate(30)
+        vehicle_command_publisher =  VehicleCommandPublisher()
+        timestamp = self.gym_node.current_time
+        inital_pose_flag =False
+        while(rclpy.ok()):
+            uav_pos = self.gym_node.uav_position
+            initial_pose = [0.0,0.0,-5.0, 0.0]
+            landing_pose = [0.0,0.0,0.0, 0.0]
+            if not self.is_at_position(initial_pose[0], initial_pose[1],initial_pose[2],uav_pos[0],uav_pos[1],uav_pos[2],0.5) and not inital_pose_flag:
+                self.fly_to_pose(*initial_pose)
+                inital_pose_flag = True
+            else:
+                 self.fly_to_pose(*landing_pose)
+            if self.is_at_position(landing_pose[0], landing_pose[1],landing_pose[2],uav_pos[0],uav_pos[1],uav_pos[2],0.2):
+                vehicle_command_publisher.publish(timestamp,21,param1 = 0.0, param2 =0.0)
+            if landing_counter > 2000:
+                vehicle_command_publisher.publish(timestamp,400,param1 = 0.0)
+            if landing_counter > 1900:
+                break
+                
+            landing_counter += 1
+            rate.sleep()
+                
 
 
     def step(self, action):
         state = self.gym_node.get_current_state()
         reward = 0
         done = False  # done check
-        #start sending new commands
+        #start sending new commands 
         #TODO it may happen that action zero gets passed first and then send with old action, maybe flag necessary after update to stop that from happening
         self.gym_node.vx = action[0]
         self.gym_node.vy = action[1]
@@ -143,39 +185,19 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         return state, reward, done, {'debug': 'working just fine'}
 
     def reset(self):
-        # Resets the state of the environment and returns an initial observation.
-        print('@env@ Resets the state of the environment and returns an initial observation.')
+        print('landing')
+        self.landing()
+        print('landing complete')
+        self.reach_initial_pose()
+        print('initial pose again')
+        while True:
+            pass
+        #self.reset_world.send_request()
+        #land vehicle and initialize again
 
-        rospy.wait_for_service('/gazebo/reset_world')
-        try:
-            # reset_proxy.call()
-            self.reset_proxy()
-            # print('@env@ reset model place')
-        except rospy.ServiceException as e:
-            print ("@env@ /gazebo/reset_world service call failed")
-
-        self.send_msg_get_return('reset')
-        print('@env@ sleep 3s')
-        time.sleep(3)
-
-        data = self.send_msg_get_return('takeoff')
-
-        data[0] = data[0] - self.des[0]
-        data[1] = data[1] - self.des[1]
-        data[2] = data[2] - self.des[2]
-        self.pos = np.array([0, 0, 0])
-        for idx in range(len(data)):
-            if idx < 3:
-                data[idx] = (data[idx] + 50) / 100
-            else:
-                if data[idx] > 10 or data[idx] == np.inf:
-                    data[idx] = 10
-                data[idx] = (data[idx] - 0.2) / 9.8
-
-        state = data
-        if 'nan' in str(state):
-            state = np.zeros([len(state)])
-        return state
+        #self.send_msg_get_return('reset')
+        #TODO return 0 for now
+        return 0
 
     def set_des(self, destination):
         self.des = destination
@@ -205,6 +227,7 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         ctrl_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         connected = False
         while not connected:
+            print('trying to connect')
             try:
                 # print('@env@ try to connect with ctrl server')
                 ctrl_client.connect(('localhost', 19881))

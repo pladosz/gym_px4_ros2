@@ -116,7 +116,7 @@ class GymNode(Node):
             10)
         self.current_time = 0
         #initialize states
-        self.uav_position = []
+        self.uav_position = [0,0,0,0]
     
     def timer_callback(self):
         if self.mode == 'None':
