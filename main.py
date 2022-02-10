@@ -1,4 +1,4 @@
-from envs.px4_env import SinglePx4UavEnv
+from gym_gazebo2_px4.envs.px4_env import SinglePx4UavEnv
 import numpy as np
 import time
 

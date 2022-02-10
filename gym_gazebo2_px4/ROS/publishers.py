@@ -166,7 +166,7 @@ class GymNode(Node):
         y = msg.y
         z = msg.z
         q = msg.q
-        self.uav_position = [x,y,z,q]
+        self.uav_position = [x,y,z,q[0],q[1],q[2],q[3]]
 
     def timestamp_listener_callback(self, msg):
         self.current_time = msg.timestamp

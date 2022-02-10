@@ -42,12 +42,13 @@ from std_msgs.msg import String
 
 from gym.utils import seeding
 
-from ROS.publishers import OffboardControlPublisher
-from ROS.publishers import PositionPublisher
-from ROS.publishers import VehicleCommandPublisher
-from ROS.publishers import GymNode
-from ROS.subscribers import TimesyncSubscriber
-from ROS.services import ResetWorldServ
+from gym_gazebo2_px4.ROS.publishers import OffboardControlPublisher
+from gym_gazebo2_px4.ROS.publishers import PositionPublisher
+from gym_gazebo2_px4.ROS.publishers import VehicleCommandPublisher
+from gym_gazebo2_px4.ROS.publishers import GymNode
+from gym_gazebo2_px4.ROS.subscribers import TimesyncSubscriber
+from gym_gazebo2_px4.ROS.services import ResetWorldServ
+from gym.envs.registration import register
 #different commands guide:
 #176 - set mode 
 # 400 - Arms / Disarms a component |1 to arm, 0 to disarm
@@ -58,19 +59,22 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
     def __init__(self,args = None):
         self.des = [170, 0, 15]
 
-        gazebo_env.GazeboEnv.__init__(self, "/home/user/landing/gym_gazebo2_px4/launch_files/px4_sim_launch.py")
+        gazebo_env.GazeboEnv.__init__(self, "/home/user/landing/gym_gazebo2_px4/gym_gazebo2_px4/launch_files/px4_sim_launch.py")
         #rospy.wait_for_service('/gazebo/unpause_physics', 30)
-        #self.unpause = rclpy.ServiceProxy('/gazebo/unpause_physics', Empty)
+        #self.unpause = rclpy.ServicePfoxy('/gazebo/unpause_physics', Empty)
         #self.pause = rclpy.ServiceProxy('/gazebo/pause_physics', Empty)
         #self.reset_proxy = rclpy.ServiceProxy('/gazebo/reset_world', Empty)
         self.action_low = np.array([-1, -1, -1]) # y_vel, x_vel, z_vel
         self.action_high = np.array([1, 1, 1])
         
-        self.action_space = spaces.Box(self.action_low, self.action_high, dtype=np.float32)
+        self.action_space = spaces.Box(self.action_low, self.action_high, dtype=float)
         self.reward_range = (-np.inf, np.inf)
         self._seed()
         self.radius = 3
-
+        obs_low = np.concatenate((-100, -100, -100, -1, -1, -1, -1), axis=None)
+        obs_high = np.concatenate((100, 100, 100, 1, 1, 1, 1), axis=None)
+        self.observation_space = spaces.Box(obs_low, obs_high, dtype = np.float32)
+        self.steps = 0
         #os.system('python /home/huhaomeng/gym-gazebo/gym_gazebo/envs/px4_uav/mavros_ctrl_server.py &')
 
         print('@env@ ctrl server started')
@@ -148,20 +152,23 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         vehicle_command_publisher =  VehicleCommandPublisher()
         timestamp = self.gym_node.current_time
         inital_pose_flag =False
+        landing_flag = False
         while(rclpy.ok()):
             uav_pos = self.gym_node.uav_position
             initial_pose = [0.0,0.0,-5.0, 0.0]
-            landing_pose = [0.0,0.0,0.0, 0.0]
+            landing_pose = [0.0,0.0,-1.0, 0.0]
             if not self.is_at_position(initial_pose[0], initial_pose[1],initial_pose[2],uav_pos[0],uav_pos[1],uav_pos[2],0.5) and not inital_pose_flag:
                 self.fly_to_pose(*initial_pose)
                 inital_pose_flag = True
             else:
                  self.fly_to_pose(*landing_pose)
-            if self.is_at_position(landing_pose[0], landing_pose[1],landing_pose[2],uav_pos[0],uav_pos[1],uav_pos[2],0.2):
+            if self.is_at_position(landing_pose[0], landing_pose[1],landing_pose[2],uav_pos[0],uav_pos[1],uav_pos[2],0.2) and not landing_flag:
                 vehicle_command_publisher.publish(timestamp,21,param1 = 0.0, param2 =0.0)
-            if landing_counter > 2000:
+                landing_flag = True
+            if landing_counter > 110 and inital_pose_flag and landing_flag:
                 vehicle_command_publisher.publish(timestamp,400,param1 = 0.0)
-            if landing_counter > 1900:
+            if landing_counter > 120 and inital_pose_flag and landing_flag:
+                print('code break')
                 break
                 
             landing_counter += 1
@@ -175,29 +182,42 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         done = False  # done check
         #start sending new commands 
         #TODO it may happen that action zero gets passed first and then send with old action, maybe flag necessary after update to stop that from happening
-        self.gym_node.vx = action[0]
-        self.gym_node.vy = action[1]
-        self.gym_node.vz =action[2]
+        self.gym_node.vx = action[0].item()
+        self.gym_node.vy = action[1].item()
+        self.gym_node.vz =action[2].item()
+        #give 0.5 second for uav to react, not sure this is right way (note simulation is sped up 10 times)
+        time.sleep(0.05)
+        #compute simple reward, give +1 for agent to be in a position
+        reward_pose = [1.0,1.0,-3.0]
+        uav_pos = self.gym_node.uav_position
+        if self.is_at_position(reward_pose[0], reward_pose[1], reward_pose[2],uav_pos[0],uav_pos[1],uav_pos[2],0.5):
+            reward = 1
 
         # print('@env@ observation:' + str(state))
         # print('@env@ reward:' + str(reward))
         # print('@env@ done:' + str(done))
+        self.steps += 1
+        if self.steps > 255:
+            done = True
+            state = self.reset()
+            self.steps = 0
+            print('reset')
         return state, reward, done, {'debug': 'working just fine'}
 
     def reset(self):
         print('landing')
         self.landing()
         print('landing complete')
+        print('going to initial pose again')
         self.reach_initial_pose()
-        print('initial pose again')
-        while True:
-            pass
+        print('listening to commands')
         #self.reset_world.send_request()
         #land vehicle and initialize again
 
         #self.send_msg_get_return('reset')
         #TODO return 0 for now
-        return 0
+        state = self.gym_node.get_current_state()
+        return state
 
     def set_des(self, destination):
         self.des = destination
