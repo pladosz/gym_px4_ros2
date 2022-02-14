@@ -53,7 +53,6 @@ class GazeboEnv(gym.Env):
         self._roslaunch = subprocess.Popen(["ros2", "launch", fullpath])
         #self._roslaunch = subprocess.Popen([sys.executable, os.path.join(ros_path, b"roslaunch"), "-p", self.port, fullpath])
         print ("Gazebo launched!")
-
         self.gzclient_pid = 0
 
         # Launch the simulation with the given launchfile name

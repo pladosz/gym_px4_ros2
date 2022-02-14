@@ -48,8 +48,7 @@ def generate_launch_description():
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource([gazebo_launch_dir, '/gzclient.launch.py'])
         ),
-
-        ExecuteProcess(
+         ExecuteProcess(
             cmd=[
                 'gz', 'model',
                 '--spawn-file', LaunchConfiguration('model'),
@@ -77,6 +76,5 @@ def generate_launch_description():
             output='screen'),
         ExecuteProcess(
             cmd=['micrortps_agent', '-t', 'UDP'],
-            output='screen'),
-
+            output='screen'), 
 ])
