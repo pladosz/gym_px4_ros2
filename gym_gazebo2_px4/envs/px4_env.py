@@ -59,7 +59,7 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
     def __init__(self,args = None):
         self.des = [170, 0, 15]
 
-        gazebo_env.GazeboEnv.__init__(self, "/home/user/landing/gym_gazebo2_px4/gym_gazebo2_px4/launch_files/px4_sim_launch.py")
+        gazebo_env.GazeboEnv.__init__(self, "/home/user/landing/gym_gazebo2_px4/gym_gazebo2_px4/launch_files/px4_sim_launch.py", "/home/user/landing/gym_gazebo2_px4/gym_gazebo2_px4/launch_files/gazebo_launch.py")
         #rospy.wait_for_service('/gazebo/unpause_physics', 30)
         #self.unpause = rclpy.ServicePfoxy('/gazebo/unpause_physics', Empty)
         #self.pause = rclpy.ServiceProxy('/gazebo/pause_physics', Empty)
@@ -205,12 +205,18 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         return state, reward, done, {'debug': 'working just fine'}
 
     def reset(self):
-        print('landing')
-        self.landing()
-        print('landing complete')
-        print('going to initial pose again')
-        self.reach_initial_pose()
-        print('listening to commands')
+        self.reset_world.send_request()
+        print('killing px4')
+        self._roslaunch_px4.terminate() 
+        self._roslaunch_px4.kill()
+        self._roslaunch_px4.wait()
+        self._roslaunch_px4 = subprocess.Popen(["ros2", "launch", self.fullpath_px4])
+        #print('landing')
+        #self.landing()
+        #print('landing complete')
+        #print('going to initial pose again')
+        #self.reach_initial_pose()
+        #print('listening to commands')
         #self.reset_world.send_request()
         #land vehicle and initialize again
 

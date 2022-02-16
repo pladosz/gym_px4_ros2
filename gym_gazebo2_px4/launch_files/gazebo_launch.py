@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import os
-import time
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -40,34 +39,13 @@ def generate_launch_description():
         DeclareLaunchArgument('R', default_value='0.0'),
         DeclareLaunchArgument('P', default_value='0.0'),
         DeclareLaunchArgument('Y', default_value='0.0'),
-         ExecuteProcess(
-            cmd=[
-                'gz', 'model',
-                '--spawn-file', LaunchConfiguration('model'),
-                '--model-name', 'drone',
-                '-x', LaunchConfiguration('x'),
-                '-y', LaunchConfiguration('y'),
-                '-z', LaunchConfiguration('z'),
-                '-R', LaunchConfiguration('R'),
-                '-P', LaunchConfiguration('P'),
-                '-Y', LaunchConfiguration('Y')
-            ],
-            prefix="bash -c 'sleep 5s; $0 $@'",
-            output='screen'),
-            
-            
-        ExecuteProcess(
-            cmd=[
-                HOME + '/PX4-Autopilot/build/px4_sitl_rtps/bin/px4',
-                HOME + '/PX4-Autopilot/build/px4_sitl_rtps/etc',
-                '-s',
-                HOME + '/PX4-Autopilot/build/px4_sitl_rtps/etc/init.d-posix/rcS',
-                '-t',
-                HOME + '/PX4-Autopilot/test_data'
-            ],
-            cwd=PX4_RUN_DIR,
-            output='screen'),
-        ExecuteProcess(
-            cmd=['micrortps_agent', '-t', 'UDP'],
-            output='screen'), 
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([gazebo_launch_dir, '/gzserver.launch.py']),
+            launch_arguments={'world': LaunchConfiguration('world'),
+                              'verbose': 'true'}.items(),
+        ),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([gazebo_launch_dir, '/gzclient.launch.py'])
+        ) 
 ])

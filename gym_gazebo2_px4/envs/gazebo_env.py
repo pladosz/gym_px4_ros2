@@ -15,7 +15,7 @@ class GazeboEnv(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, launchfile):
+    def __init__(self, launchfile_px4,launchfile_gazebo):
         self.last_clock_msg = Clock()
 
         # random_number = random.randint(10000, 15000)
@@ -43,18 +43,29 @@ class GazeboEnv(gym.Env):
         # print ("Roscore launched!")
 
 
-        if launchfile.startswith("/"):
-            fullpath = launchfile
+        if launchfile_gazebo.startswith("/"):
+            fullpath_gazebo = launchfile_gazebo
         else:
-            fullpath = os.path.join(os.path.dirname(__file__), "assets", "launch", launchfile)
-        if not os.path.exists(fullpath):
-            raise IOError("File "+fullpath+" does not exist")
-        print([sys.executable, "ros2 launch", fullpath])
-        self._roslaunch = subprocess.Popen(["ros2", "launch", fullpath])
-        #self._roslaunch = subprocess.Popen([sys.executable, os.path.join(ros_path, b"roslaunch"), "-p", self.port, fullpath])
+            fullpath_gazebo = os.path.join(os.path.dirname(__file__), "assets", "launch", launchfile_gazebo)
+        if not os.path.exists(fullpath_gazebo):
+            raise IOError("File "+fullpath_gazebo+" does not exist")
+        print([sys.executable, "ros2 launch", fullpath_gazebo])
+        self._roslaunch = subprocess.Popen(["ros2", "launch", fullpath_gazebo])
+        time.sleep(10)
         print ("Gazebo launched!")
-        self.gzclient_pid = 0
+        if launchfile_px4.startswith("/"):
+            self.fullpath_px4 = launchfile_px4
+        else:
+            self.fullpath_px4 = os.path.join(os.path.dirname(__file__), "assets", "launch", launchfile_px4)
+        if not os.path.exists(self.fullpath_px4):
+            raise IOError("File "+self.fullpath_px4+" does not exist")
+        print([sys.executable, "ros2 launch", self.fullpath_px4])
 
+        self._roslaunch_px4 = subprocess.Popen(["ros2", "launch", self.fullpath_px4])
+        print('px4_launched')
+        #self._roslaunch = subprocess.Popen([sys.executable, os.path.join(ros_path, b"roslaunch"), "-p", self.port, fullpath])
+        self.gzclient_pid = 0
+        #os.killpg(os.getpgid(self._roslaunch_px4.pid), signal.SIGTERM)
         # Launch the simulation with the given launchfile name
         #rospy.init_node('gym', anonymous=True)
 

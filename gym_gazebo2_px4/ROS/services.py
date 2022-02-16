@@ -20,5 +20,5 @@ class ResetWorldServ(Node):
     
     def send_request(self):
         self.reset_world_cli.call_async(self.req_world)
-        #self.reset_sim_cli.call_async(self.req_sim)
+        self.reset_sim_cli.call_async(self.req_sim)
  
