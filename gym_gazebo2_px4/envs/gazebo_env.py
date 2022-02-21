@@ -44,14 +44,14 @@ class GazeboEnv(gym.Env):
 
 
         if launchfile_gazebo.startswith("/"):
-            fullpath_gazebo = launchfile_gazebo
+            self.fullpath_gazebo = launchfile_gazebo
         else:
-            fullpath_gazebo = os.path.join(os.path.dirname(__file__), "assets", "launch", launchfile_gazebo)
-        if not os.path.exists(fullpath_gazebo):
-            raise IOError("File "+fullpath_gazebo+" does not exist")
-        print([sys.executable, "ros2 launch", fullpath_gazebo])
-        self._roslaunch = subprocess.Popen(["ros2", "launch", fullpath_gazebo])
-        time.sleep(10)
+            self.fullpath_gazebo = os.path.join(os.path.dirname(__file__), "assets", "launch", launchfile_gazebo)
+        if not os.path.exists(self.fullpath_gazebo):
+            raise IOError("File "+self.fullpath_gazebo+" does not exist")
+        print([sys.executable, "ros2 launch", self.fullpath_gazebo])
+        self._roslaunch = subprocess.Popen(["ros2", "launch", self.fullpath_gazebo])
+        time.sleep(7)
         print ("Gazebo launched!")
         if launchfile_px4.startswith("/"):
             self.fullpath_px4 = launchfile_px4

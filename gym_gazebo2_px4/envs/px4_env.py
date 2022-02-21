@@ -112,7 +112,10 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
                 vehicle_command_publisher.publish(timestamp,400,param1 = 1.0)
             #offboard publisher tells px4 which mode to enter I think. You need to do publish_vehicle_command after 10 setpoints
             initial_pose = [0.0,0.0,-5.0, 0.0]
-            if offboard_setpoint_counter < 400:
+            print('sending pose')
+            if offboard_setpoint_counter < 300:
+                self.fly_to_pose(*initial_pose)
+            else:
                 self.fly_to_pose(*initial_pose)
             #see if agents reached its position
             uav_pos = self.gym_node.uav_position
@@ -207,15 +210,30 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
     def reset(self):
         self.reset_world.send_request()
         print('killing px4')
-        self._roslaunch_px4.terminate() 
+        self._roslaunch.kill()
+        self._roslaunch.wait()
+        print('killing gazebo')
         self._roslaunch_px4.kill()
         self._roslaunch_px4.wait()
+        #clean up
+        subprocess.run(['pkill','-9', '-f' ,'gz'])
+        subprocess.run(['pkill','-9', '-f' ,'px4'])
+        subprocess.run(['pkill','-9', '-f' ,'micrortps'])
+        #rclpy.shutdown()
+
+        self._roslaunch = subprocess.Popen(["ros2", "launch", self.fullpath_gazebo])
+        #time.sleep(10)
+        time.sleep(7)
         self._roslaunch_px4 = subprocess.Popen(["ros2", "launch", self.fullpath_px4])
+        time.sleep(7)
+        #restart ros node
+        #spin_thread = Thread(target = rclpy.spin, args =(self.gym_node,))
+        #spin_thread.start()
         #print('landing')
         #self.landing()
         #print('landing complete')
-        #print('going to initial pose again')
-        #self.reach_initial_pose()
+        print('going to initial pose again')
+        self.reach_initial_pose()
         #print('listening to commands')
         #self.reset_world.send_request()
         #land vehicle and initialize again
@@ -223,6 +241,7 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         #self.send_msg_get_return('reset')
         #TODO return 0 for now
         state = self.gym_node.get_current_state()
+        print('reset complete')
         return state
 
     def set_des(self, destination):

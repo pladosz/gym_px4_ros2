@@ -12,4 +12,9 @@ if __name__ == "__main__":
         time.sleep(1)
     print('calling reset')
     env.reset()
+    print('sending random velocity commads')
+    for i in range(0,5):
+        action = np.random.uniform(low = -1,high = 1, size = (3,))
+        env.step(action)
+        time.sleep(1)
     #env.step(np.array([0.5, 0.5, 0.5]))
