@@ -11,6 +11,7 @@ import pickle
 import types
 from cmath import nan
 from threading import Thread
+import signal
 
 from gym import utils, spaces
 
@@ -26,6 +27,7 @@ from rclpy.qos import qos_profile_sensor_data
 from rclpy.qos import QoSProfile
 from rclpy.qos import QoSReliabilityPolicy
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint # Used for publishing mara joint angles.
+from rclpy.executors import MultiThreadedExecutor
 #from control_msgs.msg import JointTrajectoryControllerState
 # from gazebo_msgs.srv import SetEntityState, DeleteEntity
 #from gazebo_msgs.msg import ContactState, ModelState#, GetModelList
@@ -66,6 +68,7 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         #self.reset_proxy = rclpy.ServiceProxy('/gazebo/reset_world', Empty)
         self.action_low = np.array([-1, -1, -1]) # y_vel, x_vel, z_vel
         self.action_high = np.array([1, 1, 1])
+        self.reset_count = 0
         
         self.action_space = spaces.Box(self.action_low, self.action_high, dtype=float)
         self.reward_range = (-np.inf, np.inf)
@@ -82,20 +85,21 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
 
         self.pos = np.array([0, 0, 0])
         #initialize ros nodes
-        rclpy.init(args=args)
+        print('starting ros')
+        rclpy.init(args=None)
         #initialize services
 
         self.reset_world = ResetWorldServ()
         #timestamp_subscriber = TimesyncSubscriber()
-        vehicle_command_publisher =  VehicleCommandPublisher()
+        print('initalizing ros')
         self.gym_node = GymNode()
-
-        rate = self.gym_node.create_rate(30)
-        spin_thread = Thread(target = rclpy.spin, args =(self.gym_node,))
-        spin_thread.start()
-        offboard_setpoint_counter = 0
-        offboard_control_publisher = OffboardControlPublisher()
-        print('Nodes initialized')
+        self.executor = MultiThreadedExecutor(num_threads=1)
+        self.executor.add_node(self.gym_node)
+        print('starting ros')
+        self.spin_thread = Thread(target = self.executor.spin)
+        print('thread called')
+        self.spin_thread.start()
+        #print('Nodes initialized')
         self.reach_initial_pose()
         print('pose reached')
 
@@ -106,24 +110,29 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         vehicle_command_publisher =  VehicleCommandPublisher()
         while(rclpy.ok()):
             timestamp = self.gym_node.current_time
-            if offboard_setpoint_counter == 20:
+            if offboard_setpoint_counter == 30:
                 vehicle_command_publisher.publish(timestamp,176,param1 = 1, param2 =6)
                 #arm
                 vehicle_command_publisher.publish(timestamp,400,param1 = 1.0)
             #offboard publisher tells px4 which mode to enter I think. You need to do publish_vehicle_command after 10 setpoints
             initial_pose = [0.0,0.0,-5.0, 0.0]
-            print('sending pose')
-            if offboard_setpoint_counter < 300:
-                self.fly_to_pose(*initial_pose)
-            else:
-                self.fly_to_pose(*initial_pose)
-            #see if agents reached its position
             uav_pos = self.gym_node.uav_position
+            if not self.is_at_position(initial_pose[0], initial_pose[1],initial_pose[2],uav_pos[0],uav_pos[1],uav_pos[2],0.5) or offboard_setpoint_counter < 40:
+                self.fly_to_pose(*initial_pose)
+            if not self.is_at_position(initial_pose[0], initial_pose[1],initial_pose[2],uav_pos[0],uav_pos[1],uav_pos[2],0.5) and offboard_setpoint_counter > 1000:
+                print('reset unsucesful attempting again')
+                return 1
+            #see if agents reached its position
             
             #else:
             #    offboard_control_publisher.publish(timestamp, trajectory = True)
             #    timestamp =timestamp_subscriber.current_time
             #    self.gym_node.publish(timestamp, vx = 1.0)
+            #if self.is_at_position(initial_pose[0], initial_pose[1],initial_pose[2],uav_pos[0],uav_pos[1],uav_pos[2],0.5) and offboard_setpoint_counter <10:
+            #    print(uav_pos)
+            #    print(initial_pose)
+            #    print('I am error')
+            #    exit()
             if self.is_at_position(initial_pose[0], initial_pose[1],initial_pose[2],uav_pos[0],uav_pos[1],uav_pos[2],0.5):
                 self.gym_node.x = nan
                 self.gym_node.y = nan
@@ -134,7 +143,7 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
                 self.gym_node.vz =0.0
                 self.gym_node.yawspeed = 0.0
                 self.gym_node.mode = 'velocity'
-                break
+                return 0
             offboard_setpoint_counter += 1
             rate.sleep()
     
@@ -182,6 +191,7 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
     def step(self, action):
         state = self.gym_node.get_current_state()
         reward = 0
+        print('sending step')
         done = False  # done check
         #start sending new commands 
         #TODO it may happen that action zero gets passed first and then send with old action, maybe flag necessary after update to stop that from happening
@@ -189,60 +199,141 @@ class SinglePx4UavEnv(gazebo_env.GazeboEnv):
         self.gym_node.vy = action[1].item()
         self.gym_node.vz =action[2].item()
         #give 0.5 second for uav to react, not sure this is right way (note simulation is sped up 10 times)
-        time.sleep(0.05)
+        time.sleep(0.1)
         #compute simple reward, give +1 for agent to be in a position
-        reward_pose = [1.0,1.0,-3.0]
+        reward_pose = [2.0,0.0,-5.0]
         uav_pos = self.gym_node.uav_position
         if self.is_at_position(reward_pose[0], reward_pose[1], reward_pose[2],uav_pos[0],uav_pos[1],uav_pos[2],0.5):
-            reward = 1
+            reward = 1.0
+            print('at reward')
+            done = True
+        #define virtual wall
+        x_boundaries = [-10,10]
+        y_boundaries = [-10,10]
+        z_boundaries = [0,-10]
+        over_x_boundries = (uav_pos[0] < x_boundaries[0]) or (uav_pos[0] > x_boundaries[1]) 
+        over_y_boundries = (uav_pos[1] < y_boundaries[0]) or (uav_pos[1] > y_boundaries[1]) 
+        over_z_boundries = (uav_pos[2] < z_boundaries[1]) or (uav_pos[2] > z_boundaries[0]) 
+        if over_x_boundries or over_y_boundries or over_z_boundries:
+            reward = -1.0
+            done = True
 
         # print('@env@ observation:' + str(state))
         # print('@env@ reward:' + str(reward))
         # print('@env@ done:' + str(done))
         self.steps += 1
-        if self.steps > 255:
-            done = True
-            state = self.reset()
-            self.steps = 0
-            print('reset')
+        #if self.steps > 255:
+        #    done = True
+        #    state = self.reset()
+        #    self.steps = 0
+        #    print('reset')
         return state, reward, done, {'debug': 'working just fine'}
 
     def reset(self):
+        while(True):
+            self.kill()
+            print('killing done')
+            restart_successful = self.restart()
+            if restart_successful == 0:
+                self.reset_count += 1
+                break
+            print('resetting again')
+
+
+        state = self.gym_node.get_current_state()
+        print('reset complete')
+        return state
+
+    def kill(self):
         self.reset_world.send_request()
-        print('killing px4')
-        self._roslaunch.kill()
-        self._roslaunch.wait()
         print('killing gazebo')
+        try:
+            self._roslaunch.send_signal(signal.SIGINT)
+            self._roslaunch.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self._roslaunch.send_signal(signal.SIGKILL)
+        #os.kill(self._roslaunch.pid, signal.CTRL_C_EVENT)
+        self._roslaunch.kill()
+        self._roslaunch.wait(timeout = 10)
+        self._roslaunch = None
+        print('killing px4')
+        try:
+            self._roslaunch_px4.send_signal(signal.SIGINT)
+            #os.kill(self._roslaunch_px4.pid, signal.CTRL_C_EVENT)
+            self._roslaunch_px4.wait(timeout = 15)
+        except subprocess.TimeoutExpired:
+            self._roslaunch_px4.send_signal(signal.SIGKILL)
+            time.sleep(10)
         self._roslaunch_px4.kill()
-        self._roslaunch_px4.wait()
-        #clean up
+        self._roslaunch_px4 = None
+        #clean up undead proceses
+        print('cleaning up')
         subprocess.run(['pkill','-9', '-f' ,'gz'])
         subprocess.run(['pkill','-9', '-f' ,'px4'])
         subprocess.run(['pkill','-9', '-f' ,'micrortps'])
-        #rclpy.shutdown()
-
+        print('cleaning temp files')
+        subprocess.run(['rm','-r','/home/user/landing/home/user/landing/PX4-Autopilot/build/px4_sitl_rtps/tmp'])
+        #print('killing node')
+        #self.gym_node.stop_subscribers()
+        #self.gym_node.destroy_node()
+        #time.sleep(1)
+        #if self.reset_count % 1000==0:
+        #    print(self.reset_count)
+        #    print('waiting extra long')
+        #    time.sleep(10)
+        print('shutting down executor')
+        self.executor.shutdown()
+        print('destroying node')
+        self.gym_node.destroy_node()
+        time.sleep(1)
+        print('shutting down process')
+        #self.spin_thread.close()
+        self.spin_thread.join()
+        print('shutting down ros')
+        rclpy.shutdown()
+        print('emptying nodes')
+        self.spin_thread = None
+        self.gym_node = None
+        #clean up nodes
+        print('cleaning up ros nodes')
+        subprocess.run(['pkill','-9', '-f' ,'node'])
+        print('cleaning up dead python processes')
+        pid = os.getpid()
+        command=f"pgrep -fl python | awk '!/{pid}/{{print $1}}' | xargs kill"
+        result = subprocess.Popen(command, shell=True)
+    
+    def restart(self):
+        print('restarting gazebo')
         self._roslaunch = subprocess.Popen(["ros2", "launch", self.fullpath_gazebo])
         #time.sleep(10)
-        time.sleep(7)
+        time.sleep(4)
+        print('restarting PX4')
         self._roslaunch_px4 = subprocess.Popen(["ros2", "launch", self.fullpath_px4])
         time.sleep(7)
         #restart ros node
-        #spin_thread = Thread(target = rclpy.spin, args =(self.gym_node,))
-        #spin_thread.start()
+        print('restarting ros')
+        rclpy.init(args=None)
+        print('restarting node')
+        self.gym_node = GymNode()
+        print('restarting executor')
+        self.executor = MultiThreadedExecutor(num_threads=1)
+        self.executor.add_node(self.gym_node)
+        print('starting ros thread')
+        self.spin_thread = Thread(target = self.executor.spin)
+        print('spinning thread')
+        self.spin_thread.start()
         #print('landing')
         #self.landing()
         #print('landing complete')
         print('going to initial pose again')
-        self.reach_initial_pose()
+        restart_successful = self.reach_initial_pose()
         #print('listening to commands')
         #self.reset_world.send_request()
         #land vehicle and initialize again
 
         #self.send_msg_get_return('reset')
-        #TODO return 0 for now
-        state = self.gym_node.get_current_state()
-        print('reset complete')
-        return state
+        return restart_successful
+
 
     def set_des(self, destination):
         self.des = destination

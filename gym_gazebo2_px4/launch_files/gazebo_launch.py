@@ -29,7 +29,7 @@ def generate_launch_description():
         SetEnvironmentVariable('GAZEBO_MODEL_PATH', HOME + '/PX4-Autopilot/Tools/sitl_gazebo/models'),
 
         SetEnvironmentVariable('PX4_SIM_MODEL', 'iris'),
-        SetEnvironmentVariable('PX4_SIM_SPEED_FACTOR', '10'),
+        SetEnvironmentVariable('PX4_SIM_SPEED_FACTOR', '6'),
 
         DeclareLaunchArgument('world', default_value=world),
         DeclareLaunchArgument('model', default_value=model),

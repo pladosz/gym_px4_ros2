@@ -97,6 +97,7 @@ class GymNode(Node):
         self.vy = 0.0
         self.vz =0.0
         self.yawspeed = 0.0
+        self.position_timestamp = 0
         # offboard command mode
         self.position = False
         self.velocity = True
@@ -108,15 +109,16 @@ class GymNode(Node):
             Timesync,
             '/fmu/timesync/out',
             self.timestamp_listener_callback,
-            10)
+            1)
         self.drone_state_subscription = self.create_subscription(
             VehicleOdometry,
             '/fmu/vehicle_odometry/out',
             self.UAV_state_listener_callback,
-            10)
+            1)
         self.current_time = 0
         #initialize states
         self.uav_position = [0,0,0,0]
+        self.stop = False
     
     def timer_callback(self):
         if self.mode == 'None':
@@ -131,6 +133,8 @@ class GymNode(Node):
             self.position = True
             self.velocity = False
             self.veh_com_callback()
+        if self.stop:
+            pass
 
     def trajectory_callback(self):
         msg = TrajectorySetpoint()
@@ -166,11 +170,22 @@ class GymNode(Node):
         y = msg.y
         z = msg.z
         q = msg.q
+        position_timestamp = msg.timestamp
+        if self.position_timestamp - position_timestamp == 0:
+            exit()
+        self.position_timestamp =position_timestamp
         self.uav_position = [x,y,z,q[0],q[1],q[2],q[3]]
 
     def timestamp_listener_callback(self, msg):
+        if self.stop:
+            return
         self.current_time = msg.timestamp
         #self.get_logger().info('I heard: "%s"' % msg.timestamp)
+
+    def stop_subscribers(self):
+        self.stop = True
+        self.subscription = None
+        self.drone_state_subscription = None
     
 #    def publish(self,timestamp, vx = 0.0, vy = 0.0, vz = 0.0, yawspeed = 0.0):
 #        msg = TrajectorySetpoint()
